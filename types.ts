@@ -15,9 +15,16 @@ export interface QuranWord {
 
 export interface HifzChallenge {
   originalVerse: string;
-  maskedVerse: string;
-  missingWords: string[];
-  tips: string;
-  tajweedRules: string;
-  tartilGuidance: string;
+  tipsTamil: string;
+  tipsEnglish: string;
+  tajweedTamil: string;
+  tajweedEnglish: string;
+  tartilTamil: string;
+  tartilEnglish: string;
+}
+
+export interface RecitationFeedback {
+  feedbackTamil: string;
+  feedbackEnglish: string;
+  accuracyScore: number;
 }

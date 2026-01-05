@@ -53,39 +53,19 @@ export const analyzeQuranVerse = async (input: string | { data: string; mimeType
   return JSON.parse(response.text || '[]');
 };
 
-export const analyzeArabicGrammar = async (input: string | { data: string; mimeType: string }) => {
-  const ai = getAI();
-  const prompt = `Perform a deep linguistic and grammatical analysis of this Quranic verse.
-  1. Root Words (வேர்ச் சொற்கள்): Extract the 3-letter roots for key words and explain their core meanings.
-  2. Grammar (இலக்கணம்): Explain the Nahw (sentence structure) and Sarf (word morphology) in simple terms.
-  3. Learning Tips: Provide 3-4 specific tips on how to learn these Arabic patterns using English and Tamil grammar analogies.
-  Provide the output in a clean Markdown format with clear headings. Use both English and Tamil for explanations.`;
-
-  const contents = typeof input === 'string' 
-    ? { parts: [{ text: `${prompt}\n\nVerse: ${input}` }] }
-    : { parts: [{ text: prompt }, { inlineData: input }] };
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents,
-    config: {
-      thinkingConfig: { thinkingBudget: 32768 }
-    }
-  });
-
-  return response.text;
-};
-
 export const analyzeHifzChallenge = async (input: string | { data: string; mimeType: string }) => {
   const ai = getAI();
-  const prompt = `You are an expert Quran Hifz (memorization) and Tajweed coach. Analyze the following verse and provide guidance:
-  1. Provide the original Arabic verse.
-  2. Provide a 'maskedVerse' where 3-4 key words are replaced with '____'.
-  3. List the 'missingWords' in order.
-  4. Provide 'tips' in Tamil and English for memorizing this specific verse.
-  5. Provide 'tajweedRules' (தஜ்வீத் விதிகள்) specific to this verse in Tamil and English.
-  6. Provide 'tartilGuidance' (தர்த்தீல் வழிகாட்டுதல்) on how to recite with proper melody and pace in Tamil and English.
-  Return JSON.`;
+  const prompt = `You are an expert Quran Hifz (memorization) and Tajweed coach. Analyze the following verse and provide guidance.
+  Provide separate fields for Tamil and English for all explanations.
+  
+  Return JSON with:
+  1. originalVerse: Full Arabic text.
+  2. tipsTamil: Memorization tips in Tamil.
+  3. tipsEnglish: Memorization tips in English.
+  4. tajweedTamil: Detailed Tajweed rules in Tamil.
+  5. tajweedEnglish: Detailed Tajweed rules in English.
+  6. tartilTamil: Recitation guidance in Tamil.
+  7. tartilEnglish: Recitation guidance in English.`;
 
   const contents = typeof input === 'string' 
     ? { parts: [{ text: `${prompt}\n\nVerse: ${input}` }] }
@@ -101,13 +81,14 @@ export const analyzeHifzChallenge = async (input: string | { data: string; mimeT
         type: Type.OBJECT,
         properties: {
           originalVerse: { type: Type.STRING },
-          maskedVerse: { type: Type.STRING },
-          missingWords: { type: Type.ARRAY, items: { type: Type.STRING } },
-          tips: { type: Type.STRING },
-          tajweedRules: { type: Type.STRING },
-          tartilGuidance: { type: Type.STRING }
+          tipsTamil: { type: Type.STRING },
+          tipsEnglish: { type: Type.STRING },
+          tajweedTamil: { type: Type.STRING },
+          tajweedEnglish: { type: Type.STRING },
+          tartilTamil: { type: Type.STRING },
+          tartilEnglish: { type: Type.STRING }
         },
-        required: ["originalVerse", "maskedVerse", "missingWords", "tips", "tajweedRules", "tartilGuidance"]
+        required: ["originalVerse", "tipsTamil", "tipsEnglish", "tajweedTamil", "tajweedEnglish", "tartilTamil", "tartilEnglish"]
       }
     }
   });
@@ -118,10 +99,10 @@ export const analyzeHifzChallenge = async (input: string | { data: string; mimeT
 export const verifyRecitation = async (verseText: string, audioData: { data: string; mimeType: string }) => {
   const ai = getAI();
   const prompt = `Compare this audio recitation against the target Quranic verse: "${verseText}".
-  Check for:
-  1. Accuracy (any skipped or wrong words).
-  2. Basic Tajweed suggestions (Ghunnah, Mad, Qalqalah etc).
-  Provide feedback in a clear format with both Tamil (தமிழ்) and English. Highlight specific areas of improvement. Be encouraging.`;
+  Return JSON with:
+  1. feedbackTamil: Correction and encouragement in Tamil.
+  2. feedbackEnglish: Correction and encouragement in English.
+  3. accuracyScore: Number from 0 to 100.`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
@@ -130,41 +111,37 @@ export const verifyRecitation = async (verseText: string, audioData: { data: str
         { text: prompt },
         { inlineData: audioData }
       ]
+    },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          feedbackTamil: { type: Type.STRING },
+          feedbackEnglish: { type: Type.STRING },
+          accuracyScore: { type: Type.NUMBER }
+        },
+        required: ["feedbackTamil", "feedbackEnglish", "accuracyScore"]
+      }
     }
   });
 
-  return response.text;
-};
-
-export const translateQuranVerse = async (input: string | { data: string; mimeType: string }) => {
-  const ai = getAI();
-  const prompt = `Provide a full detailed translation and explanation for this Quran verse in both Tamil and English. 
-  Structure it as:
-  1. Full English Translation
-  2. Full Tamil Translation (தமிழ் விளக்கம்)
-  3. Brief Context/Benefit (பயன்)`;
-
-  const contents = typeof input === 'string' 
-    ? { parts: [{ text: `${prompt}\n\nVerse: ${input}` }] }
-    : { parts: [{ text: prompt }, { inlineData: input }] };
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents
-  });
-
-  return response.text;
+  return JSON.parse(response.text || '{}');
 };
 
 export const generateSpeech = async (text: string) => {
   const ai = getAI();
+  // Instruction to ensure Tajweed is applied to the recitation
+  const tajweedInstruction = `Recite the following Arabic text with professional Tajweed, correct Makharij (articulation points), and proper Sifat (attributes). Ensure clarity and reverence: ${text}`;
+  
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
-    contents: [{ parts: [{ text }] }],
+    contents: [{ parts: [{ text: tajweedInstruction }] }],
     config: {
       responseModalities: [Modality.AUDIO],
       speechConfig: {
         voiceConfig: {
+          // 'Kore' is a good clear voice, but we emphasize Tajweed in the prompt
           prebuiltVoiceConfig: { voiceName: 'Kore' },
         },
       },

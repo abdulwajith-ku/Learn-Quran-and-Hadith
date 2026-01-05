@@ -1,0 +1,8 @@
+{
+  "name": "Quran Learn Helper",
+  "description": "An advanced AI-powered dashboard for Quranic word-by-word analysis with Tamil meanings, document summarization, professional costing generation, and real-time voice interaction.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

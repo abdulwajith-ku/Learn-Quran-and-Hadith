@@ -35,7 +35,9 @@ import {
   CheckCircle2,
   HelpCircle,
   PlayCircle,
-  ArrowRight
+  ArrowRight,
+  FileDigit,
+  Eye as EyeIcon
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
@@ -73,6 +75,7 @@ const App: React.FC = () => {
   const [quranInput, setQuranInput] = useState('');
   const [quranResult, setQuranResult] = useState<QuranWord[]>([]);
   const [quranPayload, setQuranPayload] = useState<any>(null);
+  const [quranFilePreview, setQuranFilePreview] = useState<{type: 'image' | 'text', content: string} | null>(null);
   const [selectedQuranFileSize, setSelectedQuranFileSize] = useState<number | null>(null);
   const [hideTamilQuran, setHideTamilQuran] = useState(false);
   const [hideEnglishQuran, setHideEnglishQuran] = useState(false);
@@ -82,6 +85,7 @@ const App: React.FC = () => {
   const [hifzInput, setHifzInput] = useState('');
   const [hifzChallenge, setHifzChallenge] = useState<HifzChallenge | null>(null);
   const [hifzPayload, setHifzPayload] = useState<any>(null);
+  const [hifzFilePreview, setHifzFilePreview] = useState<{type: 'image' | 'text', content: string} | null>(null);
   const [selectedHifzFileSize, setSelectedHifzFileSize] = useState<number | null>(null);
   const [hifzMaskedIndices, setHifzMaskedIndices] = useState<Set<number>>(new Set());
   const [recitationFeedback, setRecitationFeedback] = useState<RecitationFeedback | null>(null);
@@ -353,6 +357,7 @@ const App: React.FC = () => {
     setHifzInput('');
     setHifzChallenge(null);
     setHifzPayload(null);
+    setHifzFilePreview(null);
     setSelectedHifzFileSize(null);
     setRecitationFeedback(null);
     setRecordedAudio(null);
@@ -365,6 +370,7 @@ const App: React.FC = () => {
     setQuranInput('');
     setQuranResult([]);
     setQuranPayload(null);
+    setQuranFilePreview(null);
     setSelectedQuranFileSize(null);
     setPeekIndices(new Set());
   };
@@ -382,18 +388,41 @@ const App: React.FC = () => {
     }
   };
 
-  const processFile = async (file: File): Promise<{ data: any; type: 'inline' | 'text' }> => {
+  const processFile = async (file: File): Promise<{ data: any; type: 'inline' | 'text'; preview: {type: 'image' | 'text', content: string} }> => {
     const isPdf = file.type === 'application/pdf';
     const isImage = file.type.startsWith('image/');
     const isExcel = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.type === 'text/csv';
     const isWord = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx');
 
-    if (isPdf || isImage) {
+    if (isImage) {
       return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = (e) => {
           const base64 = (e.target?.result as string).split(',')[1];
-          resolve({ data: { data: base64, mimeType: file.type }, type: 'inline' });
+          const fullDataUrl = e.target?.result as string;
+          resolve({ 
+            data: { data: base64, mimeType: file.type }, 
+            type: 'inline',
+            preview: { type: 'image', content: fullDataUrl }
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    if (isPdf) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const base64 = (e.target?.result as string).split(',')[1];
+          // For PDFs, we'll try to extract text for the preview using Gemini's extractText helper indirectly or just show that it's a PDF.
+          // Since extractTextForReading is async and uses AI, we'll just store the payload and indicate it's a PDF.
+          // In a real app, you might use a PDF library, but here we prioritize the extracted text later.
+          resolve({ 
+            data: { data: base64, mimeType: file.type }, 
+            type: 'inline',
+            preview: { type: 'text', content: `[PDF File Detected: ${file.name}] Processing for text extraction...` }
+          });
         };
         reader.readAsDataURL(file);
       });
@@ -410,7 +439,11 @@ const App: React.FC = () => {
             const sheet = workbook.Sheets[sheetName];
             fullText += `Sheet: ${sheetName}\n${XLSX.utils.sheet_to_csv(sheet)}\n\n`;
           });
-          resolve({ data: fullText, type: 'text' });
+          resolve({ 
+            data: fullText, 
+            type: 'text',
+            preview: { type: 'text', content: fullText }
+          });
         };
         reader.readAsArrayBuffer(file);
       });
@@ -419,25 +452,44 @@ const App: React.FC = () => {
     if (isWord) {
       const arrayBuffer = await file.arrayBuffer();
       const result = await mammoth.extractRawText({ arrayBuffer });
-      return { data: result.value, type: 'text' };
+      return { 
+        data: result.value, 
+        type: 'text',
+        preview: { type: 'text', content: result.value }
+      };
     }
 
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        resolve({ data: e.target?.result as string, type: 'text' });
+        const text = e.target?.result as string;
+        resolve({ 
+          data: text, 
+          type: 'text',
+          preview: { type: 'text', content: text }
+        });
       };
       reader.readAsText(file);
     });
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, onProcessed: (payload: any, name: string, size: number) => void) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, onProcessed: (payload: any, preview: {type: 'image' | 'text', content: string}, name: string, size: number) => void) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setLoading(true);
     try {
       const result = await processFile(file);
-      onProcessed(result.data, file.name, file.size);
+      onProcessed(result.data, result.preview, file.name, file.size);
+      
+      // If it's a PDF, we try to extract the "full document text" using AI immediately for the preview
+      if (file.type === 'application/pdf') {
+        try {
+          const extracted = await extractTextForReading(result.data);
+          onProcessed(result.data, { type: 'text', content: extracted }, file.name, file.size);
+        } catch (err) {
+          console.warn("Could not extract PDF text for preview immediately.", err);
+        }
+      }
     } catch (err: any) {
       setError(`Failed to process file: ${err.message}`);
     } finally {
@@ -470,6 +522,31 @@ const App: React.FC = () => {
       ))}
     </div>
   );
+
+  const DocumentPreview = ({ preview, onClear }: { preview: {type: 'image' | 'text', content: string} | null, onClear: () => void }) => {
+    if (!preview) return null;
+    return (
+      <div className="bg-slate-50 border-2 border-slate-200 rounded-[2rem] overflow-hidden mt-4 animate-in fade-in slide-in-from-top-4">
+        <div className="flex items-center justify-between px-6 py-3 bg-slate-100 border-b-2 border-slate-200">
+          <div className="flex items-center gap-2 text-slate-700 font-black text-[10px] uppercase tracking-widest">
+            <EyeIcon size={14} /> Full Document Preview
+          </div>
+          <button onClick={onClear} className="text-slate-400 hover:text-red-500 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-6 max-h-[400px] overflow-y-auto">
+          {preview.type === 'image' ? (
+            <img src={preview.content} alt="Uploaded document preview" className="max-w-full rounded-xl shadow-lg mx-auto" />
+          ) : (
+            <div className="whitespace-pre-wrap font-medium text-slate-700 leading-relaxed text-sm bg-white p-6 rounded-xl shadow-inner border border-slate-200">
+              {preview.content}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const renderContent = () => {
     switch (activeView) {
@@ -617,7 +694,7 @@ const App: React.FC = () => {
                   className="w-full p-6 border-2 border-slate-100 rounded-[1.5rem] h-32 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-300 transition-all outline-none text-lg"
                   placeholder="Paste verse or upload a document..."
                   value={quranInput}
-                  onChange={(e) => { setQuranInput(e.target.value); setQuranPayload(null); setSelectedQuranFileSize(null); }}
+                  onChange={(e) => { setQuranInput(e.target.value); setQuranPayload(null); setQuranFilePreview(null); setSelectedQuranFileSize(null); }}
                 />
                 <button
                   onClick={() => handleReadAloud(quranInput, quranPayload, 'quran-input-read')}
@@ -637,9 +714,11 @@ const App: React.FC = () => {
                 <label className="flex-[1.5] cursor-pointer bg-slate-50 border-4 border-dashed border-slate-200 text-slate-700 py-4 px-6 rounded-2xl font-black hover:bg-slate-100 transition-all flex flex-col items-center justify-center gap-2 group shadow-inner">
                   <div className="flex items-center gap-3"><Upload size={22} className="text-slate-500" /><span>UPLOAD FILE</span></div>
                   <div className="flex items-center gap-2 text-[10px] text-slate-400 font-black"><span className="bg-white px-2 rounded border">PDF</span><span className="bg-white px-2 rounded border">IMG</span><span className="bg-white px-2 rounded border">XLS</span></div>
-                  <input type="file" className="hidden" accept="image/*,application/pdf,.xlsx,.xls,.docx" onChange={(e) => handleFileUpload(e, (payload, name, size) => { setQuranPayload(payload); setQuranInput(`Loaded: ${name}`); setSelectedQuranFileSize(size); })} />
+                  <input type="file" className="hidden" accept="image/*,application/pdf,.xlsx,.xls,.docx" onChange={(e) => handleFileUpload(e, (payload, preview, name, size) => { setQuranPayload(payload); setQuranFilePreview(preview); setQuranInput(`Loaded: ${name}`); setSelectedQuranFileSize(size); })} />
                 </label>
               </div>
+
+              <DocumentPreview preview={quranFilePreview} onClear={() => { setQuranFilePreview(null); setQuranPayload(null); setQuranInput(''); }} />
             </div>
 
             {quranResult.length > 0 && (
@@ -708,6 +787,7 @@ const App: React.FC = () => {
                     className="w-full p-6 border-2 border-slate-100 rounded-[1.5rem] h-28 focus:ring-4 focus:ring-purple-100 outline-none text-right font-quran text-3xl bg-slate-50" 
                     placeholder="Paste verse..." 
                     value={hifzInput} 
+                    dir="rtl"
                     onChange={(e) => setHifzInput(e.target.value)} 
                   />
                   <div className="flex flex-col sm:flex-row gap-4">
@@ -716,15 +796,17 @@ const App: React.FC = () => {
                     </button>
                     <label className="flex-1 cursor-pointer bg-slate-50 border-4 border-dashed border-slate-200 py-4 px-4 rounded-2xl font-black hover:bg-slate-100 flex flex-col items-center justify-center gap-1 shadow-inner">
                       <div className="flex items-center gap-2"><Upload size={20} /><span>FILE</span></div>
-                      <input type="file" className="hidden" accept="image/*,application/pdf,.xlsx,.xls,.docx" onChange={(e) => handleFileUpload(e, (payload, name, size) => { setHifzPayload(payload); setHifzInput(`Loaded: ${name}`); })} />
+                      <input type="file" className="hidden" accept="image/*,application/pdf,.xlsx,.xls,.docx" onChange={(e) => handleFileUpload(e, (payload, preview, name, size) => { setHifzPayload(payload); setHifzFilePreview(preview); setHifzInput(`Loaded: ${name}`); setSelectedHifzFileSize(size); })} />
                     </label>
                   </div>
+
+                  <DocumentPreview preview={hifzFilePreview} onClear={() => { setHifzFilePreview(null); setHifzPayload(null); setHifzInput(''); }} />
                 </div>
                 {hifzChallenge && (
                   <div className="bg-slate-900 text-white p-10 rounded-[3rem] shadow-2xl space-y-8 border-t-[12px] border-purple-500 relative overflow-hidden">
                     <div className="flex flex-col items-center gap-8 relative z-10">
                       <span className="text-[10px] font-black uppercase tracking-[0.3em] text-purple-300 bg-purple-900/50 px-6 py-2 rounded-full border border-purple-700/50">Recitation Playground</span>
-                      <div className="flex flex-wrap flex-row-reverse gap-6 justify-center items-center w-full" dir="rtl">
+                      <div className="flex flex-wrap gap-6 justify-center items-center w-full" dir="rtl">
                         {hifzChallenge.originalVerse.split(/\s+/).map((word, idx) => (
                           <div key={idx} className="flex flex-col items-center gap-2">
                             <button onClick={() => toggleWordMask(idx)} className={`font-quran text-5xl leading-relaxed px-6 py-4 rounded-3xl transition-all ${hifzMaskedIndices.has(idx) ? 'bg-purple-800/20 text-purple-300/10 border-4 border-dashed border-purple-700/50 blur-[8px] scale-95' : 'bg-white/10 text-white border-4 border-white/5 shadow-xl hover:scale-110 active:scale-90'}`}>

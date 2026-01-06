@@ -33,7 +33,8 @@ import {
   Image as ImageIcon,
   MicOff,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  RotateCcw
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
@@ -72,7 +73,7 @@ const App: React.FC = () => {
   const [hifzChallenge, setHifzChallenge] = useState<HifzChallenge | null>(null);
   const [hifzPayload, setHifzPayload] = useState<any>(null);
   const [hifzFilePreview, setHifzFilePreview] = useState<{type: 'image' | 'text', content: string} | null>(null);
-  const [hifzMaskedIndices, setHifzMaskedIndices] = useState<Set<number>>(new Set());
+  const [hifzMaskedIndices, setHifzMaskedIndices] = useState<Set<string>>(new Set());
   const [recitationFeedback, setRecitationFeedback] = useState<RecitationFeedback | null>(null);
   const [hideTamilHifz, setHideTamilHifz] = useState(false);
   const [hideEnglishHifz, setHideEnglishHifz] = useState(false);
@@ -275,7 +276,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Voice to Text Dictation - Fixed Duplication and Network Error logic
   const toggleDictation = (target: 'quran' | 'hifz') => {
     if (isDictating) {
       if (recognitionRef.current) {
@@ -294,9 +294,8 @@ const App: React.FC = () => {
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'ar-SA'; // Optimized for Quranic verses
+    recognition.lang = 'ar-SA'; 
 
-    // Capture the current text before we start appending
     const startText = target === 'quran' ? quranInput : hifzInput;
     setDictationStartText(startText);
 
@@ -316,9 +315,9 @@ const App: React.FC = () => {
     recognition.onerror = (event: any) => {
       setIsDictating(null);
       if (event.error === 'network') {
-        setError("Speech recognition network error. Please check your internet connection or try a different browser.");
+        setError("Speech recognition network error. Please check your internet connection.");
       } else if (event.error === 'not-allowed') {
-        setError("Microphone permission denied. Please allow microphone access to use voice dictation.");
+        setError("Microphone permission denied.");
       } else {
         setError(`Speech recognition error: ${event.error}`);
       }
@@ -385,7 +384,7 @@ const App: React.FC = () => {
           </div>
           <button onClick={onClear} className="p-2 text-slate-400 hover:text-red-500 transition-colors"><X size={18} /></button>
         </div>
-        <div className="p-8 max-h-[450px] overflow-y-auto">
+        <div className="p-8 max-h-[450px] overflow-y-auto custom-scrollbar">
           {preview.type === 'image' ? (
             <img src={preview.content} alt="Source" className="max-w-full rounded-2xl shadow-xl mx-auto border-4 border-white" />
           ) : (
@@ -512,7 +511,7 @@ const App: React.FC = () => {
                     <button disabled={loading || !hifzInput} onClick={() => handleAction(async () => { setHifzChallenge(await analyzeHifzChallenge(hifzPayload || hifzInput)); })} className="flex-[2] bg-purple-600 text-white py-5 rounded-[1.5rem] font-black hover:bg-purple-700 shadow-xl flex items-center justify-center gap-4 transition-all active:scale-95">
                       {loading ? <Loader2 className="animate-spin" /> : <BrainCircuit size={28} />} START TRAINING
                     </button>
-                    <label className="flex-1 cursor-pointer bg-slate-50 border-4 border-dashed border-slate-200 py-5 rounded-[1.5rem] font-black hover:bg-slate-100 flex items-center justify-center gap-2 shadow-inner">
+                    <label className="flex-1 cursor-pointer bg-slate-50 border-4 border-dashed border-slate-200 py-5 rounded-[1.5rem] font-black hover:bg-slate-100 flex items-center justify-center gap-2 shadow-inner transition-colors">
                       <Upload size={22} /><span>FILE</span>
                       <input type="file" className="hidden" onChange={(e) => handleFileChange(e, 'hifz')} />
                     </label>
@@ -521,32 +520,44 @@ const App: React.FC = () => {
                 </div>
 
                 {hifzChallenge && (
-                  <div className="bg-slate-900 text-white p-10 rounded-[3.5rem] shadow-2xl space-y-8 border-t-[16px] border-purple-500 animate-in zoom-in-95">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black uppercase tracking-[0.4em] text-purple-300">Interactive Reciter (Tap Words to Hide)</span>
-                      <button onClick={() => setHifzMaskedIndices(new Set())} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-colors flex items-center gap-1"><RefreshCw size={14} /> REVEAL ALL</button>
+                  <div className="bg-slate-900 text-white p-12 rounded-[4rem] shadow-2xl space-y-10 border-t-[20px] border-purple-600 animate-in zoom-in-95 overflow-hidden">
+                    <div className="flex items-center justify-between pb-6 border-b border-white/10">
+                      <div className="flex items-center gap-4">
+                        <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse" />
+                        <span className="text-[11px] font-black uppercase tracking-[0.4em] text-purple-300">Interactive Reciter • Line by Line Mode</span>
+                      </div>
+                      <button onClick={() => setHifzMaskedIndices(new Set())} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-colors flex items-center gap-2 bg-white/5 px-4 py-2 rounded-full border border-white/5"><RotateCcw size={14} /> REVEAL ALL</button>
                     </div>
                     
-                    <div className="max-h-[400px] overflow-y-auto pr-4 scroll-smooth custom-scrollbar">
-                      <div className="flex flex-wrap gap-x-12 gap-y-16 justify-center items-center w-full py-8" dir="rtl">
-                        {hifzChallenge.originalVerse.split(/\s+/).map((word, idx) => (
-                          <div key={idx} className="flex flex-col items-center gap-6 group">
-                            <button 
-                              onClick={() => { 
-                                const n = new Set(hifzMaskedIndices); 
-                                n.has(idx) ? n.delete(idx) : n.add(idx); 
-                                setHifzMaskedIndices(n); 
-                              }} 
-                              className={`font-quran text-6xl leading-tight px-10 py-8 rounded-[2.5rem] transition-all duration-300 ${hifzMaskedIndices.has(idx) ? 'bg-purple-800/20 text-transparent border-4 border-dashed border-purple-700/30 blur-2xl scale-95 shadow-inner' : 'bg-white/10 text-white border-4 border-white/5 hover:bg-white/20 hover:scale-105 shadow-xl'}`}
-                            >
-                              {word}
-                            </button>
-                            <button 
-                              onClick={() => playRecitation(word, `hw-${idx}`)} 
-                              className={`p-3 rounded-full transition-all ${playingId === `hw-${idx}` ? 'bg-red-500 scale-125' : 'bg-purple-500/20 hover:bg-purple-500/40 opacity-0 group-hover:opacity-100'}`}
-                            >
-                              {playingId === `hw-${idx}` ? <Square size={16} fill="white" /> : <Volume2 size={16} />}
-                            </button>
+                    <div className="max-h-[600px] overflow-y-auto pr-2 scroll-smooth custom-scrollbar-dark px-2">
+                      <div className="space-y-20 py-8" dir="rtl">
+                        {hifzChallenge.originalVerse.split('\n').filter(line => line.trim()).map((line, lineIdx) => (
+                          <div key={lineIdx} className="w-full flex flex-wrap gap-x-14 gap-y-20 justify-center items-center py-10 border-b border-white/5 last:border-0 relative group">
+                            <div className="absolute -right-8 top-0 text-[10px] font-black text-white/10 rotate-90 uppercase tracking-[0.5em]">Line {lineIdx + 1}</div>
+                            {line.split(/\s+/).map((word, wordIdx) => {
+                              const key = `${lineIdx}-${wordIdx}`;
+                              const isMasked = hifzMaskedIndices.has(key);
+                              return (
+                                <div key={wordIdx} className="flex flex-col items-center gap-8 group/word relative">
+                                  <button 
+                                    onClick={() => { 
+                                      const n = new Set(hifzMaskedIndices); 
+                                      n.has(key) ? n.delete(key) : n.add(key); 
+                                      setHifzMaskedIndices(n); 
+                                    }} 
+                                    className={`font-quran text-7xl leading-[1.3] px-12 py-10 rounded-[3rem] transition-all duration-500 ${isMasked ? 'bg-purple-900/30 text-transparent border-4 border-dashed border-purple-700/50 blur-3xl scale-90 shadow-inner' : 'bg-white/5 text-white border-4 border-white/10 hover:bg-white/20 hover:scale-110 shadow-2xl hover:border-purple-500/50'}`}
+                                  >
+                                    {word}
+                                  </button>
+                                  <button 
+                                    onClick={() => playRecitation(word, `hw-${key}`)} 
+                                    className={`p-4 rounded-full transition-all duration-300 transform ${playingId === `hw-${key}` ? 'bg-red-500 scale-125 shadow-red-500/40' : 'bg-white/10 hover:bg-purple-600 opacity-0 group-hover/word:opacity-100 hover:scale-110'}`}
+                                  >
+                                    {playingId === `hw-${key}` ? <Square size={20} fill="white" /> : <Volume2 size={20} />}
+                                  </button>
+                                </div>
+                              );
+                            })}
                           </div>
                         ))}
                       </div>
@@ -559,95 +570,126 @@ const App: React.FC = () => {
               <div className="lg:col-span-4 space-y-10">
                 <InfoCard title="Memorization Tips" icon={<Zap className="text-purple-500" />} color="purple">
                   <div className="space-y-4">
-                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Techniques & Strategy</div>
-                    <div className="bg-slate-50 rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
-                      <div className="max-h-64 overflow-y-auto p-6 space-y-6">
-                        <div className="space-y-2">
-                          <span className="text-[9px] font-black text-purple-600 bg-purple-50 px-2 py-1 rounded">TAMIL</span>
-                          <p className="text-sm font-bold text-slate-800 leading-relaxed">{hifzChallenge?.tipsTamil || "Analysis pending..."}</p>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Strategy & Focus</div>
+                    <div className="bg-slate-50 rounded-[2.5rem] border-2 border-slate-100 overflow-hidden shadow-inner group">
+                      <div className="max-h-[300px] overflow-y-auto p-8 space-y-8 custom-scrollbar">
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-black text-purple-700 bg-purple-100 px-3 py-1 rounded-full uppercase">Tamil Guidance</span>
+                            <div className="h-px flex-1 bg-purple-100" />
+                          </div>
+                          <p className="text-lg font-bold text-slate-800 leading-relaxed antialiased">{hifzChallenge?.tipsTamil || "Waiting for verse..."}</p>
                         </div>
-                        <div className="space-y-2 border-t border-slate-100 pt-4">
-                          <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-1 rounded">ENGLISH</span>
-                          <p className="text-sm font-medium text-slate-600 leading-relaxed italic">{hifzChallenge?.tipsEnglish || "Analysis pending..."}</p>
+                        <div className="space-y-3 border-t border-slate-200/50 pt-8">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-black text-slate-500 bg-slate-200 px-3 py-1 rounded-full uppercase">English Translation</span>
+                            <div className="h-px flex-1 bg-slate-200" />
+                          </div>
+                          <p className="text-base font-medium text-slate-600 leading-relaxed italic antialiased">{hifzChallenge?.tipsEnglish || "Waiting for verse..."}</p>
                         </div>
                       </div>
                     </div>
                   </div>
                 </InfoCard>
 
-                <InfoCard title="Tajweed & Tartil" icon={<Settings className="text-amber-500" />} color="amber">
+                <InfoCard title="Tajweed Rules" icon={<Settings className="text-amber-600" />} color="amber">
                   <div className="space-y-6">
-                    <div className="bg-amber-50 rounded-[2.5rem] border-2 border-amber-100 shadow-sm overflow-hidden">
-                      <div className="px-6 py-4 border-b border-amber-100 bg-amber-100/30 flex items-center justify-between">
-                         <span className="text-[10px] font-black text-amber-900 uppercase tracking-widest">Tajweed Rules</span>
-                         <div className="flex gap-2">
-                            <button onClick={() => setHideTamilHifz(!hideTamilHifz)} className={`p-1 rounded ${hideTamilHifz ? 'text-amber-300' : 'text-amber-600'}`}><Eye size={14}/></button>
-                         </div>
+                    <div className="bg-amber-50 rounded-[3rem] border-4 border-amber-100 shadow-xl overflow-hidden">
+                      <div className="px-8 py-5 border-b-2 border-amber-100 bg-amber-100/50 flex items-center justify-between">
+                         <span className="text-[11px] font-black text-amber-900 uppercase tracking-widest">Articulation & Flow</span>
+                         <button onClick={() => setHideTamilHifz(!hideTamilHifz)} className={`p-2 rounded-xl transition-colors ${hideTamilHifz ? 'text-amber-300 bg-white' : 'text-amber-600 hover:bg-white'}`}><Eye size={16}/></button>
                       </div>
-                      <div className="max-h-64 overflow-y-auto p-6 space-y-4">
-                        {!hideTamilHifz && <div className="text-base font-bold text-amber-900 leading-relaxed">{hifzChallenge?.tajweedTamil || "Rules will appear after analysis..."}</div>}
-                        {!hideEnglishHifz && <div className="text-sm font-medium text-slate-700 leading-relaxed border-t border-amber-200/50 pt-4 italic">{hifzChallenge?.tajweedEnglish || "Rules will appear after analysis..."}</div>}
-                      </div>
-                    </div>
-
-                    <div className="bg-indigo-50 rounded-[2.5rem] border-2 border-indigo-100 shadow-sm overflow-hidden">
-                      <div className="px-6 py-4 border-b border-indigo-100 bg-indigo-100/30">
-                        <span className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">Tartil Guidance</span>
-                      </div>
-                      <div className="max-h-48 overflow-y-auto p-6 space-y-4">
-                        <div className="text-base font-bold text-indigo-900 leading-relaxed">{hifzChallenge?.tartilTamil || "Awaiting input..."}</div>
-                        <div className="text-sm font-medium text-slate-700 leading-relaxed border-t border-indigo-200/50 pt-4">{hifzChallenge?.tartilEnglish || "Awaiting input..."}</div>
+                      <div className="max-h-[350px] overflow-y-auto p-8 space-y-8 custom-scrollbar">
+                        {!hideTamilHifz && (
+                          <div className="space-y-6">
+                            <div className="p-6 bg-white rounded-[2rem] shadow-sm border border-amber-200/50">
+                              <h5 className="text-[10px] font-black text-amber-600 mb-4 uppercase tracking-tighter">Makharij & Tajweed (Tamil)</h5>
+                              <p className="text-lg font-bold text-amber-950 leading-relaxed">{hifzChallenge?.tajweedTamil || "Details will appear here..."}</p>
+                            </div>
+                            <div className="p-6 bg-indigo-50/50 rounded-[2rem] shadow-sm border border-indigo-100">
+                              <h5 className="text-[10px] font-black text-indigo-600 mb-4 uppercase tracking-tighter">Tartil Advice (Tamil)</h5>
+                              <p className="text-base font-bold text-indigo-950 leading-relaxed">{hifzChallenge?.tartilTamil || "Awaiting input..."}</p>
+                            </div>
+                          </div>
+                        )}
+                        <div className="space-y-4 border-t-2 border-amber-100/50 pt-8">
+                          <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">English References</h5>
+                          <p className="text-sm font-medium text-slate-700 leading-relaxed italic bg-white/50 p-6 rounded-2xl">{hifzChallenge?.tajweedEnglish || "Pending..."}</p>
+                          <p className="text-sm font-medium text-slate-600 leading-relaxed italic bg-indigo-50/30 p-6 rounded-2xl">{hifzChallenge?.tartilEnglish || "Pending..."}</p>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </InfoCard>
 
-                <div className="bg-slate-900 text-white p-10 rounded-[3.5rem] shadow-2xl space-y-8 overflow-hidden">
-                  <h3 className="font-black text-[10px] uppercase tracking-widest text-red-400">Recitation AI Audit</h3>
-                  <div className="flex flex-col items-center gap-6 py-10 border-4 border-dashed border-slate-800 rounded-[3rem] bg-slate-950/50 transition-all hover:bg-slate-950">
+                <div className="bg-slate-950 text-white p-10 rounded-[4rem] shadow-3xl space-y-10 overflow-hidden relative">
+                  <div className="absolute top-0 right-0 w-40 h-40 bg-purple-600/10 blur-[80px] -z-10 rounded-full" />
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-black text-[11px] uppercase tracking-[0.3em] text-red-500">Recitation Mu'allim Audit</h3>
+                    <div className="px-3 py-1 bg-red-500/10 text-red-500 text-[9px] font-black rounded-full border border-red-500/20">AI POWERED</div>
+                  </div>
+
+                  <div className="flex flex-col items-center gap-8 py-14 border-4 border-dashed border-slate-800 rounded-[3.5rem] bg-slate-900/50 hover:bg-slate-900 transition-all group/record">
                     <button 
                       onClick={isRecording ? stopVoiceCapture : startVoiceCapture} 
-                      className={`w-28 h-28 rounded-full flex items-center justify-center transition-all shadow-3xl ${isRecording ? 'bg-red-500 animate-pulse ring-8 ring-red-500/20' : 'bg-red-600 hover:scale-110 hover:rotate-3'}`}
+                      className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500 shadow-4xl ${isRecording ? 'bg-red-500 animate-pulse ring-[20px] ring-red-500/10' : 'bg-red-600 hover:scale-110 hover:shadow-red-600/30'}`}
                     >
-                      {isRecording ? <Square size={36} fill="white" /> : <Mic size={44} className="text-white" />}
+                      {isRecording ? <Square size={40} fill="white" /> : <Mic size={50} className="text-white" />}
                     </button>
-                    <div className="text-center">
-                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">{isRecording ? 'Capturing Audio...' : 'Record Your Recitation'}</span>
-                      {recordedBlobUrl && !isRecording && <span className="text-[9px] font-black text-emerald-500 bg-emerald-500/10 px-3 py-1 rounded-full uppercase tracking-tighter">Audio Saved <Check size={10} className="inline ml-1" /></span>}
+                    <div className="text-center space-y-3">
+                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest block">{isRecording ? 'Listening for Tajweed...' : 'Record Your Voice'}</span>
+                      {recordedBlobUrl && !isRecording && (
+                        <div className="flex items-center justify-center gap-2 bg-emerald-500/20 px-4 py-2 rounded-full border border-emerald-500/30 animate-in fade-in scale-90">
+                          <Check size={14} className="text-emerald-500" />
+                          <span className="text-[10px] font-black text-emerald-400 uppercase">Audio Ready for Audit</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   
                   {recordedBlobUrl && !isRecording && (
                     <button 
                       onClick={() => handleAction(async () => { if (recordedAudio) setRecitationFeedback(await verifyRecitation(hifzInput, recordedAudio)); })} 
-                      className="w-full py-6 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-[2rem] font-black uppercase text-[11px] tracking-[0.2em] shadow-xl hover:shadow-emerald-500/20 transition-all active:scale-95"
+                      className="w-full py-7 bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-[2.5rem] font-black uppercase text-[12px] tracking-[0.3em] shadow-2xl hover:shadow-indigo-500/40 transition-all active:scale-95 group overflow-hidden relative"
                     >
-                      {loading ? <Loader2 className="animate-spin mx-auto" /> : 'RUN RECITATION AUDIT'}
+                      <span className="relative z-10 flex items-center justify-center gap-3">
+                        {loading ? <Loader2 className="animate-spin" /> : <><BrainCircuit size={20} /> ANALYZE PERFORMANCE</>}
+                      </span>
+                      <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
                     </button>
                   )}
 
                   {recitationFeedback && (
-                    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-                      <div className="flex items-center justify-between p-6 bg-white/5 rounded-[2.5rem] border border-white/10 shadow-inner">
-                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Accuracy</span>
-                        <div className="flex items-end gap-1">
-                          <span className={`text-5xl font-black ${recitationFeedback.accuracyScore >= 90 ? 'text-emerald-400' : recitationFeedback.accuracyScore >= 70 ? 'text-amber-400' : 'text-red-400'}`}>{recitationFeedback.accuracyScore}</span>
-                          <span className="text-sm font-black text-slate-500 mb-2">%</span>
+                    <div className="space-y-8 animate-in slide-in-from-bottom-6 duration-700">
+                      <div className="relative p-1 rounded-[3rem] bg-gradient-to-br from-emerald-400/50 via-teal-500/50 to-indigo-600/50 shadow-2xl">
+                        <div className="flex flex-col items-center justify-center gap-2 p-10 bg-slate-950 rounded-[2.8rem] shadow-inner">
+                          <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.4em]">Overall Accuracy</span>
+                          <div className="flex items-end gap-2">
+                            <span className={`text-7xl font-black tabular-nums tracking-tighter ${recitationFeedback.accuracyScore >= 90 ? 'text-emerald-400' : recitationFeedback.accuracyScore >= 75 ? 'text-amber-400' : 'text-red-400'}`}>{recitationFeedback.accuracyScore}</span>
+                            <span className="text-2xl font-black text-slate-600 mb-3">%</span>
+                          </div>
                         </div>
                       </div>
                       
-                      <div className="bg-white/5 rounded-[2.5rem] border border-white/10 overflow-hidden">
-                        <div className="px-6 py-4 border-b border-white/5 bg-white/5">
-                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mu'allim Feedback</span>
+                      <div className="bg-white/5 rounded-[3.5rem] border-2 border-white/10 overflow-hidden shadow-2xl">
+                        <div className="px-10 py-6 border-b-2 border-white/5 bg-white/5 flex items-center gap-4">
+                           <div className="w-2 h-2 bg-emerald-500 rounded-full" />
+                           <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Mu'allim Corrections</span>
                         </div>
-                        <div className="p-6 max-h-64 overflow-y-auto space-y-6 custom-scrollbar-dark">
-                          <div className="space-y-2">
-                             <div className="text-[9px] font-black text-emerald-400 uppercase">Tamil Advice</div>
-                             <p className="text-sm font-bold text-emerald-50 leading-relaxed">{recitationFeedback.feedbackTamil}</p>
+                        <div className="p-10 max-h-[400px] overflow-y-auto space-y-10 custom-scrollbar-dark">
+                          <div className="space-y-4">
+                             <div className="flex items-center gap-3">
+                               <span className="text-[9px] font-black text-emerald-400 border border-emerald-400/30 px-3 py-1 rounded-full uppercase">Tamil Feed</span>
+                               <div className="h-px flex-1 bg-emerald-400/10" />
+                             </div>
+                             <p className="text-xl font-bold text-emerald-50 leading-[1.6] antialiased">{recitationFeedback.feedbackTamil}</p>
                           </div>
-                          <div className="space-y-2 border-t border-white/10 pt-4">
-                             <div className="text-[9px] font-black text-slate-400 uppercase">English Translation</div>
-                             <p className="text-sm font-medium text-slate-300 leading-relaxed italic">{recitationFeedback.feedbackEnglish}</p>
+                          <div className="space-y-4 pt-10 border-t border-white/5">
+                             <div className="flex items-center gap-3">
+                               <span className="text-[9px] font-black text-slate-500 border border-white/10 px-3 py-1 rounded-full uppercase">English Breakdown</span>
+                               <div className="h-px flex-1 bg-white/5" />
+                             </div>
+                             <p className="text-base font-medium text-slate-400 leading-relaxed italic antialiased">{recitationFeedback.feedbackEnglish}</p>
                           </div>
                         </div>
                       </div>

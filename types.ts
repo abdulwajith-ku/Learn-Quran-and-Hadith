@@ -1,8 +1,10 @@
 
+
 export enum AppView {
   DASHBOARD = 'DASHBOARD',
   QURAN = 'QURAN',
   HIFZ = 'HIFZ',
+  TAFSIR = 'TAFSIR', // New Tafsir View
   TUTORIAL = 'TUTORIAL'
 }
 
@@ -27,4 +29,10 @@ export interface RecitationFeedback {
   feedbackTamil: string;
   feedbackEnglish: string;
   accuracyScore: number;
+}
+
+// New interface for Tafsir results
+export interface TafsirResult {
+  tamilTafsir: string;
+  englishTafsir: string;
 }

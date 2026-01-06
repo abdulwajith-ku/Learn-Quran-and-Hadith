@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   BookOpen, 
@@ -34,17 +35,22 @@ import {
   MicOff,
   ChevronRight,
   ChevronDown,
-  RotateCcw
+  RotateCcw,
+  Edit,
+  Save,
+  // Add Plus icon import
+  Plus
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
-import { AppView, QuranWord, HifzChallenge, RecitationFeedback } from './types';
+import { AppView, QuranWord, HifzChallenge, RecitationFeedback, TafsirResult } from './types';
 import { 
   analyzeQuranVerse, 
   generateSpeech,
   analyzeHifzChallenge,
   verifyRecitation,
-  extractTextForReading
+  extractTextForReading,
+  generateTafsir // Import new Tafsir service
 } from './services/geminiService';
 
 const App: React.FC = () => {
@@ -58,6 +64,9 @@ const App: React.FC = () => {
 
   // Configuration
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [customTajweedRules, setCustomTajweedRules] = useState<string>('');
+  const [showCustomRulesInput, setShowCustomRulesInput] = useState(false);
+  const [tempCustomRules, setTempCustomRules] = useState<string>(''); // For text area
 
   // Quran Lab state
   const [quranInput, setQuranInput] = useState('');
@@ -77,10 +86,19 @@ const App: React.FC = () => {
   const [recitationFeedback, setRecitationFeedback] = useState<RecitationFeedback | null>(null);
   const [hideTamilHifz, setHideTamilHifz] = useState(false);
   const [hideEnglishHifz, setHideEnglishHifz] = useState(false);
+
+  // Tafsir Lab state (NEW)
+  const [tafsirInput, setTafsirInput] = useState('');
+  const [tafsirResult, setTafsirResult] = useState<TafsirResult | null>(null);
+  const [tafsirPayload, setTafsirPayload] = useState<any>(null);
+  const [tafsirFilePreview, setTafsirFilePreview] = useState<{type: 'image' | 'text', content: string} | null>(null);
+  const [hideTamilTafsir, setHideTamilTafsir] = useState(false);
+  const [hideEnglishTafsir, setHideEnglishTafsir] = useState(false);
+  const [playingTafsirId, setPlayingTafsirId] = useState<string | null>(null); // For Tafsir audio playback
   
   // Voice states
   const [isRecording, setIsRecording] = useState(false);
-  const [isDictating, setIsDictating] = useState<string | null>(null); // 'quran' | 'hifz' | null
+  const [isDictating, setIsDictating] = useState<string | null>(null); // 'quran' | 'hifz' | 'tafsir' | null (updated)
   const [dictationStartText, setDictationStartText] = useState('');
   const [recordedAudio, setRecordedAudio] = useState<{data: string, mimeType: string} | null>(null);
   const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null);
@@ -92,6 +110,22 @@ const App: React.FC = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const savedRules = localStorage.getItem('customTajweedRules');
+    if (savedRules) {
+        setCustomTajweedRules(savedRules);
+        setTempCustomRules(savedRules); // Initialize temp with saved rules
+    }
+  }, []);
+
+  useEffect(() => {
+      if (customTajweedRules) {
+          localStorage.setItem('customTajweedRules', customTajweedRules);
+      } else {
+          localStorage.removeItem('customTajweedRules');
+      }
+  }, [customTajweedRules]);
 
   const getAudioContext = () => {
     if (!audioContextRef.current) {
@@ -109,18 +143,19 @@ const App: React.FC = () => {
       audioSourceRef.current = null;
     }
     setPlayingId(null);
+    setPlayingTafsirId(null); // Also stop Tafsir audio
   };
 
-  const resetQuran = () => {
+  // Generalized reset function for all labs
+  const resetLab = () => {
+    stopAudio();
+    // Reset Quran Lab states
     setQuranInput('');
     setQuranResult([]);
     setQuranPayload(null);
     setQuranFilePreview(null);
     setPeekIndices(new Set());
-    stopAudio();
-  };
-
-  const resetHifz = () => {
+    // Reset Hifz Studio states
     setHifzInput('');
     setHifzChallenge(null);
     setHifzPayload(null);
@@ -130,18 +165,44 @@ const App: React.FC = () => {
     setRecordedAudio(null);
     setRecordedBlobUrl(null);
     setIsRecording(false);
+    // Reset Tafsir Lab states (NEW)
+    setTafsirInput('');
+    setTafsirResult(null);
+    setTafsirPayload(null);
+    setTafsirFilePreview(null);
+    setHideTamilTafsir(false);
+    setHideEnglishTafsir(false);
+    setPlayingTafsirId(null);
+    // Reset dictation
     setIsDictating(null);
-    stopAudio();
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
   };
 
-  const playRecitation = async (text: string, id: string) => {
-    stopAudio();
-    setPlayingId(id);
+  const resetQuran = () => {
+    resetLab(); // Call general reset
+    // Specific Quran reset if any
+  };
+
+  const resetHifz = () => {
+    resetLab(); // Call general reset
+    // Specific Hifz reset if any
+  };
+
+  const resetTafsir = () => { // NEW reset for Tafsir
+    resetLab(); // Call general reset
+    // Specific Tafsir reset if any
+  };
+
+  const playRecitation = async (text: string, id: string, setPlayingState: React.Dispatch<React.SetStateAction<string | null>> = setPlayingId) => {
+    stopAudio(); // Stop any currently playing audio
+    setPlayingState(id);
     const ctx = getAudioContext();
     try {
       const base64Audio = await generateSpeech(text);
-      if (!base64Audio || playingId === 'STOPPED') {
-        setPlayingId(null);
+      if (!base64Audio || id === 'STOPPED') { // Use the passed ID for comparison
+        setPlayingState(null);
         return;
       }
       const binary = atob(base64Audio);
@@ -159,12 +220,12 @@ const App: React.FC = () => {
       source.buffer = buffer;
       source.playbackRate.value = playbackSpeed;
       source.connect(ctx.destination);
-      source.onended = () => { if (playingId === id) setPlayingId(null); };
+      source.onended = () => { if (setPlayingState === setPlayingId && playingId === id) setPlayingState(null); else if (setPlayingState === setPlayingTafsirId && playingTafsirId === id) setPlayingState(null); }; // Check which state to clear
       audioSourceRef.current = source;
       source.start();
     } catch (err) {
       console.error("Audio error:", err);
-      setPlayingId(null);
+      setPlayingState(null);
     }
   };
 
@@ -246,7 +307,7 @@ const App: React.FC = () => {
     });
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, target: 'quran' | 'hifz') => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, target: 'quran' | 'hifz' | 'tafsir') => {
     const file = e.target.files?.[0];
     if (!file) return;
     setLoading(true);
@@ -260,13 +321,21 @@ const App: React.FC = () => {
           const txt = await extractTextForReading(result.data);
           setQuranFilePreview({ type: 'text', content: txt });
         }
-      } else {
+      } else if (target === 'hifz') {
         setHifzPayload(result.data);
         setHifzFilePreview(result.preview);
         setHifzInput(`Document: ${file.name}`);
         if (file.type === 'application/pdf') {
           const txt = await extractTextForReading(result.data);
           setHifzFilePreview({ type: 'text', content: txt });
+        }
+      } else if (target === 'tafsir') { // NEW Tafsir file handling
+        setTafsirPayload(result.data);
+        setTafsirFilePreview(result.preview);
+        setTafsirInput(`Document: ${file.name}`);
+        if (file.type === 'application/pdf') {
+          const txt = await extractTextForReading(result.data);
+          setTafsirFilePreview({ type: 'text', content: txt });
         }
       }
     } catch (err: any) {
@@ -276,7 +345,7 @@ const App: React.FC = () => {
     }
   };
 
-  const toggleDictation = (target: 'quran' | 'hifz') => {
+  const toggleDictation = (target: 'quran' | 'hifz' | 'tafsir') => { // Updated target
     if (isDictating) {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
@@ -296,7 +365,11 @@ const App: React.FC = () => {
     recognition.interimResults = true;
     recognition.lang = 'ar-SA'; 
 
-    const startText = target === 'quran' ? quranInput : hifzInput;
+    let startText = '';
+    if (target === 'quran') startText = quranInput;
+    else if (target === 'hifz') startText = hifzInput;
+    else if (target === 'tafsir') startText = tafsirInput; // NEW target
+    
     setDictationStartText(startText);
 
     recognition.onresult = (event: any) => {
@@ -307,8 +380,10 @@ const App: React.FC = () => {
       const updatedValue = (startText ? startText + ' ' : '') + sessionTranscript;
       if (target === 'quran') {
         setQuranInput(updatedValue);
-      } else {
+      } else if (target === 'hifz') {
         setHifzInput(updatedValue);
+      } else if (target === 'tafsir') { // NEW target
+        setTafsirInput(updatedValue);
       }
     };
 
@@ -402,6 +477,7 @@ const App: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 p-10 max-w-7xl mx-auto">
             <FeatureCard title="Quran Analysis Lab" desc="Word-by-word breakdown with Tamil meanings and Tajweed audio." icon={<BookOpen className="text-emerald-600" />} onClick={() => setActiveView(AppView.QURAN)} />
             <FeatureCard title="Memorization Studio" desc="Challenge your Hifz with word masking and AI-driven recitation audit." icon={<GraduationCap className="text-purple-600" />} onClick={() => setActiveView(AppView.HIFZ)} />
+            <FeatureCard title="Tafsir Lab" desc="Get comprehensive Tamil and English explanations for any Quranic verse." icon={<FileText className="text-blue-600" />} onClick={() => setActiveView(AppView.TAFSIR)} /> {/* NEW */}
             <FeatureCard title="Help & Guides" desc="Learn how to master the AI tools effectively." icon={<HelpCircle className="text-blue-600" />} onClick={() => setActiveView(AppView.TUTORIAL)} />
           </div>
         );
@@ -508,7 +584,7 @@ const App: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-6">
-                    <button disabled={loading || !hifzInput} onClick={() => handleAction(async () => { setHifzChallenge(await analyzeHifzChallenge(hifzPayload || hifzInput)); })} className="flex-[2] bg-purple-600 text-white py-5 rounded-[1.5rem] font-black hover:bg-purple-700 shadow-xl flex items-center justify-center gap-4 transition-all active:scale-95">
+                    <button disabled={loading || !hifzInput} onClick={() => handleAction(async () => { setHifzChallenge(await analyzeHifzChallenge(hifzPayload || hifzInput, customTajweedRules)); })} className="flex-[2] bg-purple-600 text-white py-5 rounded-[1.5rem] font-black hover:bg-purple-700 shadow-xl flex items-center justify-center gap-4 transition-all active:scale-95">
                       {loading ? <Loader2 className="animate-spin" /> : <BrainCircuit size={28} />} START TRAINING
                     </button>
                     <label className="flex-1 cursor-pointer bg-slate-50 border-4 border-dashed border-slate-200 py-5 rounded-[1.5rem] font-black hover:bg-slate-100 flex items-center justify-center gap-2 shadow-inner transition-colors">
@@ -550,7 +626,7 @@ const App: React.FC = () => {
                                     {word}
                                   </button>
                                   <button 
-                                    onClick={() => playRecitation(word, `hw-${key}`)} 
+                                    onClick={() => playingId === `hw-${key}` ? stopAudio() : playRecitation(word, `hw-${key}`)} 
                                     className={`p-4 rounded-full transition-all duration-300 transform ${playingId === `hw-${key}` ? 'bg-red-500 scale-125 shadow-red-500/40' : 'bg-white/10 hover:bg-purple-600 opacity-0 group-hover/word:opacity-100 hover:scale-110'}`}
                                   >
                                     {playingId === `hw-${key}` ? <Square size={20} fill="white" /> : <Volume2 size={20} />}
@@ -622,6 +698,59 @@ const App: React.FC = () => {
                   </div>
                 </InfoCard>
 
+                <InfoCard title="Custom Tajweed Rules" icon={<Sparkles className="text-emerald-600" />} color="emerald">
+                  <div className="space-y-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Personalized Guidance</span>
+                        {!showCustomRulesInput && customTajweedRules && (
+                          <div className="flex gap-2">
+                            <button onClick={() => { setShowCustomRulesInput(true); setTempCustomRules(customTajweedRules); }} className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors" title="Edit Custom Rules">
+                                <Edit size={16} />
+                            </button>
+                            <button onClick={() => setCustomTajweedRules('')} className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors" title="Clear Custom Rules">
+                                <Trash2 size={16} />
+                            </button>
+                          </div>
+                        )}
+                        {!showCustomRulesInput && !customTajweedRules && (
+                          <button onClick={() => setShowCustomRulesInput(true)} className="flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-full text-xs font-black hover:bg-emerald-200 transition-colors">
+                              {/* Fix: Use the imported Plus icon */}
+                              <Plus size={16} /> ADD RULES
+                          </button>
+                        )}
+                    </div>
+
+                    {showCustomRulesInput ? (
+                      <div className="bg-slate-50 rounded-[2.5rem] border-2 border-slate-100 shadow-inner p-6 space-y-4">
+                        <textarea
+                          className="w-full p-6 border-2 border-slate-200 rounded-2xl h-40 focus:ring-4 focus:ring-emerald-100 outline-none text-sm font-medium leading-relaxed"
+                          placeholder="Example: Emphasize 'qalqalah' for specific letters (ق ط ب ج د). Ensure 'idgham' with 'ghunnah' for nun sakin. Double check madd al-lazim."
+                          value={tempCustomRules}
+                          onChange={(e) => setTempCustomRules(e.target.value)}
+                        />
+                        <div className="flex gap-3 justify-end">
+                          <button onClick={() => { setCustomTajweedRules(tempCustomRules); setShowCustomRulesInput(false); }} className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl font-black hover:bg-emerald-700 transition-colors">
+                            <Save size={18} /> SAVE
+                          </button>
+                          <button onClick={() => { setShowCustomRulesInput(false); setTempCustomRules(customTajweedRules); }} className="flex items-center gap-2 px-6 py-3 bg-slate-200 text-slate-700 rounded-2xl font-black hover:bg-slate-300 transition-colors">
+                            <X size={18} /> CANCEL
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      customTajweedRules ? (
+                        <div className="bg-emerald-50 rounded-[2.5rem] border-2 border-emerald-100 shadow-inner p-8">
+                          <p className="text-emerald-900 text-base font-medium leading-relaxed whitespace-pre-wrap">{customTajweedRules}</p>
+                        </div>
+                      ) : (
+                        <div className="bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200 shadow-inner p-8 text-center text-slate-500 font-medium text-sm">
+                          No custom rules defined yet. Click "ADD RULES" to personalize your Tajweed feedback.
+                        </div>
+                      )
+                    )}
+                  </div>
+                </InfoCard>
+
                 <div className="bg-slate-950 text-white p-10 rounded-[4rem] shadow-3xl space-y-10 overflow-hidden relative">
                   <div className="absolute top-0 right-0 w-40 h-40 bg-purple-600/10 blur-[80px] -z-10 rounded-full" />
                   <div className="flex items-center justify-between">
@@ -649,7 +778,7 @@ const App: React.FC = () => {
                   
                   {recordedBlobUrl && !isRecording && (
                     <button 
-                      onClick={() => handleAction(async () => { if (recordedAudio) setRecitationFeedback(await verifyRecitation(hifzInput, recordedAudio)); })} 
+                      onClick={() => handleAction(async () => { if (recordedAudio) setRecitationFeedback(await verifyRecitation(hifzInput, recordedAudio, customTajweedRules)); })} 
                       className="w-full py-7 bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-[2.5rem] font-black uppercase text-[12px] tracking-[0.3em] shadow-2xl hover:shadow-indigo-500/40 transition-all active:scale-95 group overflow-hidden relative"
                     >
                       <span className="relative z-10 flex items-center justify-center gap-3">
@@ -701,6 +830,79 @@ const App: React.FC = () => {
           </div>
         );
 
+      case AppView.TAFSIR: // NEW Tafsir Lab View
+        return (
+          <div className="p-6 md:p-10 max-w-6xl mx-auto space-y-8">
+            <div className="flex items-center justify-between">
+              <h2 className="text-3xl font-black flex items-center gap-3"><FileText className="text-blue-600" /> Tafsir Lab</h2>
+              <button onClick={resetTafsir} className="text-xs font-black text-slate-400 hover:text-red-500 flex items-center gap-1 transition-colors">
+                <Trash2 size={16} /> RESET
+              </button>
+            </div>
+            <div className="bg-white p-8 rounded-[3rem] shadow-2xl border border-slate-100 space-y-6">
+              <div className="relative">
+                <textarea 
+                  className="w-full p-8 pr-28 border-2 border-slate-100 rounded-[2rem] h-40 focus:ring-4 focus:ring-blue-100 outline-none text-xl font-medium" 
+                  placeholder="Type Quran verse or upload a document for Tafsir..." 
+                  value={tafsirInput} 
+                  onChange={(e) => { setTafsirInput(e.target.value); setTafsirPayload(null); setTafsirFilePreview(null); }} 
+                />
+                <div className="absolute bottom-6 right-6 flex gap-3">
+                  <button onClick={() => toggleDictation('tafsir')} className={`p-5 rounded-[1.5rem] shadow-xl transition-all ${isDictating === 'tafsir' ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`} title="Voice to Text">
+                    {isDictating === 'tafsir' ? <MicOff size={24} /> : <Mic size={24} />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-6">
+                <button disabled={loading || (!tafsirInput && !tafsirPayload)} onClick={() => handleAction(async () => { setTafsirResult(await generateTafsir(tafsirPayload || tafsirInput)); })} className="flex-[2] bg-blue-600 text-white py-5 rounded-[1.5rem] font-black hover:bg-blue-700 shadow-xl flex items-center justify-center gap-4">
+                  {loading ? <Loader2 className="animate-spin" /> : <BrainCircuit size={28} />} GENERATE TAFSIR
+                </button>
+                <label className="flex-1 cursor-pointer bg-slate-50 border-4 border-dashed border-slate-200 py-5 rounded-[1.5rem] font-black hover:bg-slate-100 flex flex-col items-center justify-center gap-2 group shadow-inner">
+                  <div className="flex items-center gap-2"><Upload size={24} className="text-slate-500" /><span>UPLOAD</span></div>
+                  <input type="file" className="hidden" onChange={(e) => handleFileChange(e, 'tafsir')} />
+                </label>
+              </div>
+              <DocumentPreview preview={tafsirFilePreview} onClear={() => { setTafsirFilePreview(null); setTafsirPayload(null); setTafsirInput(''); }} />
+            </div>
+
+            {tafsirResult && (
+              <div className="space-y-6 animate-in fade-in">
+                <div className="flex flex-wrap items-center gap-4 bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-2xl">
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-500">Toggles:</span>
+                  <button onClick={() => setHideTamilTafsir(!hideTamilTafsir)} className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-black transition-all ${hideTamilTafsir ? 'bg-blue-600' : 'bg-slate-800 text-slate-400'}`}>{hideTamilTafsir ? <EyeOff size={16} /> : <Eye size={16} />} TAMIL</button>
+                  <button onClick={() => setHideEnglishTafsir(!hideEnglishTafsir)} className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-black transition-all ${hideEnglishTafsir ? 'bg-indigo-600' : 'bg-slate-800 text-slate-400'}`}>{hideEnglishTafsir ? <EyeOff size={16} /> : <Eye size={16} />} ENGLISH</button>
+                </div>
+                <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden">
+                  <div className="flex flex-col lg:flex-row divide-y lg:divide-x divide-slate-100">
+                    {!hideTamilTafsir && (
+                      <div className="flex-1 p-8 space-y-6">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-[10px] font-black text-blue-700 uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full border border-blue-100">Tamil Tafsir</h3>
+                            <button onClick={() => playingTafsirId === 'tafsir-tamil' ? stopAudio() : playRecitation(tafsirResult.tamilTafsir, 'tafsir-tamil', setPlayingTafsirId)} className={`p-3 rounded-xl ${playingTafsirId === 'tafsir-tamil' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
+                                {playingTafsirId === 'tafsir-tamil' ? <Square size={18} fill="currentColor" /> : <Volume2 size={18} />}
+                            </button>
+                        </div>
+                        <p className="text-lg font-bold text-slate-800 leading-relaxed whitespace-pre-wrap">{tafsirResult.tamilTafsir}</p>
+                      </div>
+                    )}
+                    {!hideEnglishTafsir && (
+                      <div className="flex-1 p-8 space-y-6">
+                         <div className="flex items-center justify-between">
+                            <h3 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">English Tafsir</h3>
+                            <button onClick={() => playingTafsirId === 'tafsir-english' ? stopAudio() : playRecitation(tafsirResult.englishTafsir, 'tafsir-english', setPlayingTafsirId)} className={`p-3 rounded-xl ${playingTafsirId === 'tafsir-english' ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                                {playingTafsirId === 'tafsir-english' ? <Square size={18} fill="currentColor" /> : <Volume2 size={18} />}
+                            </button>
+                        </div>
+                        <p className="text-base font-medium text-slate-600 leading-relaxed italic whitespace-pre-wrap">{tafsirResult.englishTafsir}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+
       case AppView.TUTORIAL:
         return (
           <div className="p-10 max-w-5xl mx-auto space-y-16">
@@ -712,6 +914,7 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
               <TutorialStep title="Word Analysis" icon={<BookOpen size={32} />} color="emerald">Paste any verse or upload Mushaf photos to see a table of every word with Tamil meanings and audio.</TutorialStep>
               <TutorialStep title="Interactive Hifz" icon={<GraduationCap size={32} />} color="purple">Mask words to test your memory, then record your voice for a full AI audit of your accuracy and Tajweed.</TutorialStep>
+              <TutorialStep title="Tafsir Explanations" icon={<FileText size={32} />} color="blue">Get in-depth explanations of any Quranic verse in both Tamil and English, perfect for deeper understanding.</TutorialStep> {/* NEW */}
               <TutorialStep title="Full Document" icon={<EyeIcon size={32} />} color="blue">Never lose context. Our AI extracts and displays the full document text from PDFs, Images, and Excel sheets.</TutorialStep>
               <TutorialStep title="Voice Dictation" icon={<Mic size={32} />} color="amber">Tired of typing? Use the microphone icon to speak directly into the input boxes. Supports multi-language detection.</TutorialStep>
             </div>
@@ -723,7 +926,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex overflow-x-hidden">
-      {sidebarOpen && <div className="fixed inset-0 bg-slate-900/40 z-40 lg:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />}
+      {sidebarOpen && <div className="fixed inset-0 bg-slate-900/40 z-40 lg:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(!sidebarOpen)} />}
       <aside className={`fixed lg:relative inset-y-0 left-0 z-50 bg-white border-r-2 border-slate-100 transition-all duration-500 ${sidebarOpen ? 'w-80 translate-x-0' : 'w-0 -translate-x-full lg:translate-x-0 overflow-hidden shadow-2xl'}`}>
         <div className="h-full w-80 flex flex-col p-10">
           <div className="flex items-center gap-5 mb-14">
@@ -735,6 +938,7 @@ const App: React.FC = () => {
             <div className="py-10 px-6 text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">MODULES</div>
             <SidebarItem icon={<BookOpen size={24} />} label="ANALYSIS LAB" active={activeView === AppView.QURAN} onClick={() => setActiveView(AppView.QURAN)} />
             <SidebarItem icon={<GraduationCap size={24} />} label="HIFZ STUDIO" active={activeView === AppView.HIFZ} onClick={() => setActiveView(AppView.HIFZ)} />
+            <SidebarItem icon={<FileText size={24} />} label="TAFSIR LAB" active={activeView === AppView.TAFSIR} onClick={() => setActiveView(AppView.TAFSIR)} /> {/* NEW */}
             <SidebarItem icon={<HelpCircle size={24} />} label="RESOURCES" active={activeView === AppView.TUTORIAL} onClick={() => setActiveView(AppView.TUTORIAL)} />
           </nav>
         </div>

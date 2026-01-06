@@ -56,9 +56,10 @@ export const analyzeQuranVerse = async (input: string | { data: string; mimeType
   return JSON.parse(response.text || '[]');
 };
 
-export const analyzeHifzChallenge = async (input: string | { data: string; mimeType: string }) => {
+export const analyzeHifzChallenge = async (input: string | { data: string; mimeType: string }, customRules: string = '') => {
   const ai = getAI();
   const prompt = `Provide professional Quran Hifz coaching for this verse. 
+  ${customRules ? `Consider these additional Tajweed and recitation rules: ${customRules}` : ''}
   Include Tajweed rules, memorization tips, and recitation advice in both Tamil and English.
   Return as JSON.`;
 
@@ -91,9 +92,10 @@ export const analyzeHifzChallenge = async (input: string | { data: string; mimeT
   return JSON.parse(response.text || '{}');
 };
 
-export const verifyRecitation = async (verseText: string, audioData: { data: string; mimeType: string }) => {
+export const verifyRecitation = async (verseText: string, audioData: { data: string; mimeType: string }, customRules: string = '') => {
   const ai = getAI();
   const prompt = `Act as an expert Quran teacher (Mu'allim). Audit this audio recitation against the text: "${verseText}". 
+  ${customRules ? `Consider these additional Tajweed and pronunciation rules: ${customRules}` : ''}
   Provide detailed feedback in Tamil and English focusing on:
   1. Pronunciation (Makharij)
   2. Tajweed rules (Ghunna, Mad, etc.)
@@ -143,4 +145,35 @@ export const generateSpeech = async (text: string) => {
     },
   });
   return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+};
+
+// New service function for generating Tafsir
+export const generateTafsir = async (input: string | { data: string; mimeType: string }) => {
+  const ai = getAI();
+  const prompt = `Provide a comprehensive Tafsir (exegesis/explanation) for this Quranic verse. 
+  The Tafsir should be detailed, easy to understand for a general audience, and available in both Tamil and English.
+  Return the output as a JSON object with two properties: 'tamilTafsir' and 'englishTafsir'.`;
+
+  const contents = typeof input === 'string' 
+    ? { parts: [{ text: `${prompt}\n\nVerse: ${input}` }] }
+    : { parts: [{ text: prompt }, { inlineData: input }] };
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview', // Using a more capable model for detailed Tafsir
+    contents,
+    config: {
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 3000 }, // Allocate more thinking budget for detailed explanations
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          tamilTafsir: { type: Type.STRING, description: 'Comprehensive Tafsir in Tamil' },
+          englishTafsir: { type: Type.STRING, description: 'Comprehensive Tafsir in English' },
+        },
+        required: ["tamilTafsir", "englishTafsir"]
+      }
+    }
+  });
+
+  return JSON.parse(response.text || '{}');
 };

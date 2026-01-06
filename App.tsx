@@ -38,8 +38,9 @@ import {
   RotateCcw,
   Edit,
   Save,
-  // Add Plus icon import
-  Plus
+  Plus,
+  Share2, // New import for general sharing icon
+  Clipboard // New import for copy to clipboard icon
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
@@ -61,6 +62,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [copiedMessage, setCopiedMessage] = useState<string | null>(null); // For copy to clipboard feedback
 
   // Configuration
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -470,6 +472,38 @@ const App: React.FC = () => {
     );
   };
 
+  // Sharing Functions
+  const copyToClipboard = async (text: string, message: string = "Copied!") => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMessage(message);
+      setTimeout(() => setCopiedMessage(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+      setError('Failed to copy text.');
+    }
+  };
+
+  const handleNativeShare = async (title: string, text: string) => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: title,
+          text: text,
+          url: window.location.href, // Share the current page URL
+        });
+      } catch (error: any) {
+        if (error.name !== 'AbortError') {
+          console.error('Error sharing:', error);
+          setError('Failed to share content.');
+        }
+      }
+    } else {
+      copyToClipboard(text, "Sharing not supported, content copied to clipboard!");
+    }
+  };
+
+
   const renderView = () => {
     switch (activeView) {
       case AppView.DASHBOARD:
@@ -867,6 +901,11 @@ const App: React.FC = () => {
 
             {tafsirResult && (
               <div className="space-y-6 animate-in fade-in">
+                {copiedMessage && (
+                  <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-6 py-3 rounded-full shadow-lg text-sm font-bold z-50 animate-in fade-in-up">
+                    {copiedMessage}
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-4 bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-2xl">
                   <span className="text-xs font-black uppercase tracking-widest text-slate-500">Toggles:</span>
                   <button onClick={() => setHideTamilTafsir(!hideTamilTafsir)} className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-black transition-all ${hideTamilTafsir ? 'bg-blue-600' : 'bg-slate-800 text-slate-400'}`}>{hideTamilTafsir ? <EyeOff size={16} /> : <Eye size={16} />} TAMIL</button>
@@ -878,9 +917,17 @@ const App: React.FC = () => {
                       <div className="flex-1 p-8 space-y-6">
                         <div className="flex items-center justify-between">
                             <h3 className="text-[10px] font-black text-blue-700 uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full border border-blue-100">Tamil Tafsir</h3>
-                            <button onClick={() => playingTafsirId === 'tafsir-tamil' ? stopAudio() : playRecitation(tafsirResult.tamilTafsir, 'tafsir-tamil', setPlayingTafsirId)} className={`p-3 rounded-xl ${playingTafsirId === 'tafsir-tamil' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
-                                {playingTafsirId === 'tafsir-tamil' ? <Square size={18} fill="currentColor" /> : <Volume2 size={18} />}
-                            </button>
+                            <div className="flex gap-2">
+                                <button onClick={() => playingTafsirId === 'tafsir-tamil' ? stopAudio() : playRecitation(tafsirResult.tamilTafsir, 'tafsir-tamil', setPlayingTafsirId)} className={`p-3 rounded-xl transition-colors ${playingTafsirId === 'tafsir-tamil' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`} title="Listen to Tamil Tafsir">
+                                    {playingTafsirId === 'tafsir-tamil' ? <Square size={18} fill="currentColor" /> : <Volume2 size={18} />}
+                                </button>
+                                <button onClick={() => copyToClipboard(tafsirResult.tamilTafsir, "Tamil Tafsir Copied!")} className="p-3 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors" title="Copy Tamil Tafsir">
+                                    <Clipboard size={18} />
+                                </button>
+                                <button onClick={() => handleNativeShare(`Quran Tafsir (Tamil)`, tafsirResult.tamilTafsir)} className="p-3 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors" title="Share Tamil Tafsir">
+                                    <Share2 size={18} />
+                                </button>
+                            </div>
                         </div>
                         <p className="text-lg font-bold text-slate-800 leading-relaxed whitespace-pre-wrap">{tafsirResult.tamilTafsir}</p>
                       </div>
@@ -889,14 +936,37 @@ const App: React.FC = () => {
                       <div className="flex-1 p-8 space-y-6">
                          <div className="flex items-center justify-between">
                             <h3 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">English Tafsir</h3>
-                            <button onClick={() => playingTafsirId === 'tafsir-english' ? stopAudio() : playRecitation(tafsirResult.englishTafsir, 'tafsir-english', setPlayingTafsirId)} className={`p-3 rounded-xl ${playingTafsirId === 'tafsir-english' ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-600'}`}>
-                                {playingTafsirId === 'tafsir-english' ? <Square size={18} fill="currentColor" /> : <Volume2 size={18} />}
-                            </button>
+                            <div className="flex gap-2">
+                                <button onClick={() => playingTafsirId === 'tafsir-english' ? stopAudio() : playRecitation(tafsirResult.englishTafsir, 'tafsir-english', setPlayingTafsirId)} className={`p-3 rounded-xl transition-colors ${playingTafsirId === 'tafsir-english' ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`} title="Listen to English Tafsir">
+                                    {playingTafsirId === 'tafsir-english' ? <Square size={18} fill="currentColor" /> : <Volume2 size={18} />}
+                                </button>
+                                <button onClick={() => copyToClipboard(tafsirResult.englishTafsir, "English Tafsir Copied!")} className="p-3 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors" title="Copy English Tafsir">
+                                    <Clipboard size={18} />
+                                </button>
+                                <button onClick={() => handleNativeShare(`Quran Tafsir (English)`, tafsirResult.englishTafsir)} className="p-3 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors" title="Share English Tafsir">
+                                    <Share2 size={18} />
+                                </button>
+                            </div>
                         </div>
                         <p className="text-base font-medium text-slate-600 leading-relaxed italic whitespace-pre-wrap">{tafsirResult.englishTafsir}</p>
                       </div>
                     )}
                   </div>
+                  {/* General Share Button for both Tafsirs */}
+                  {(tafsirResult.tamilTafsir || tafsirResult.englishTafsir) && (
+                    <div className="p-8 border-t border-slate-100 flex justify-end">
+                      <button 
+                        onClick={() => handleNativeShare(
+                          "Quran Tafsir", 
+                          `Tamil Tafsir:\n${tafsirResult.tamilTafsir}\n\nEnglish Tafsir:\n${tafsirResult.englishTafsir}`
+                        )} 
+                        className="flex items-center gap-3 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-colors shadow-lg"
+                        title="Share Both Tafsirs"
+                      >
+                        <Share2 size={18} /> SHARE ALL TAFSIR
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

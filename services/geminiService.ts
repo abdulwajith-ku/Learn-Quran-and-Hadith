@@ -93,7 +93,13 @@ export const analyzeHifzChallenge = async (input: string | { data: string; mimeT
 
 export const verifyRecitation = async (verseText: string, audioData: { data: string; mimeType: string }) => {
   const ai = getAI();
-  const prompt = `Audit this recitation against: "${verseText}". Provide feedback in Tamil and English with an accuracy score 0-100.`;
+  const prompt = `Act as an expert Quran teacher (Mu'allim). Audit this audio recitation against the text: "${verseText}". 
+  Provide detailed feedback in Tamil and English focusing on:
+  1. Pronunciation (Makharij)
+  2. Tajweed rules (Ghunna, Mad, etc.)
+  3. Fluency and Speed.
+  Assign an accuracy score (0-100). 
+  Be encouraging but precise. If there are specific mistakes, describe them clearly.`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',

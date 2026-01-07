@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type, GenerateContentResponse, Modality } from "@google/genai";
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -147,11 +146,10 @@ export const generateSpeech = async (text: string) => {
   return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 };
 
-// New service function for generating Tafsir
 export const generateTafsir = async (input: string | { data: string; mimeType: string }) => {
   const ai = getAI();
-  const prompt = `Provide a comprehensive Tafsir (exegesis/explanation) for this Quranic verse. 
-  The Tafsir should be detailed, easy to understand for a general audience, and available in both Tamil and English.
+  const prompt = `Provide a comprehensive Tafsir (exegesis) for this Quranic verse. 
+  The summary should capture the essence of classical explanations, be easy to understand for a general audience, and be available in both Tamil and English.
   Return the output as a JSON object with two properties: 'tamilTafsir' and 'englishTafsir'.`;
 
   const contents = typeof input === 'string' 
@@ -159,11 +157,11 @@ export const generateTafsir = async (input: string | { data: string; mimeType: s
     : { parts: [{ text: prompt }, { inlineData: input }] };
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview', // Using a more capable model for detailed Tafsir
+    model: 'gemini-3-pro-preview',
     contents,
     config: {
       responseMimeType: "application/json",
-      thinkingConfig: { thinkingBudget: 3000 }, // Allocate more thinking budget for detailed explanations
+      thinkingConfig: { thinkingBudget: 3000 },
       responseSchema: {
         type: Type.OBJECT,
         properties: {
